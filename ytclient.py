@@ -1,17 +1,24 @@
 from limitedmessagesocket.limited_message_socket import LimitedMessageSocket
 from time import sleep
+from ytplayer import YouTubePlayer
+import json
 
 class YouTubeClient:
 	def __init__(self):
-		self.socket = LimitedMessageSocket(('https://api.lucaduran.com', 17777))
+		self.server_address = ('18.220.151.1', 17777)
+		self.socket = None
+		self.player = YouTubePlayer()
 
 	def _establish_connection(self):
 		while True:
 			try:
+				self.socket = LimitedMessageSocket(self.server_address)
 				self.socket.connect()
 				break
-			except:
-				sleep(5)
+			except Exception as e:
+				print(str(e))
+				print('Error connecting, trying again...')
+				sleep(1)
 	
 	def _wait_command(self):
 		try:
@@ -20,7 +27,7 @@ class YouTubeClient:
 			return parsed
 
 		except ParseException as e:
-			print(str(e))
+			print('ParseException:' + str(e))
 			return { 'error' : None }
 
 		except Exception as e:
@@ -29,33 +36,35 @@ class YouTubeClient:
 			return None
 	
 	def _parse_command(self, command):
-		command_args =  command.split(' ')
+		command_args = command.split(' ')
 
-		method = command[0]
+		method = command_args[0]
 		args = []
 		if len(command_args) > 1:
 			args = command_args[1:]
 
-		args_correct, cargs = self._convert_args(args, str)
+		args_correct, cargs = self._convert_args(args, None)
 
 		if not args_correct:
 			raise ParseException(method, args)
 
 		return {
-				'method' : 'play',
+				'method' : method,
 				'args' : cargs
 			}
 	
-	def _convert_args(args, *converters):
+	def _convert_args(self, args, *converters):
 		cargs = []
 		args_correct = True
 
 		for i in range(len(args)):
 			arg = args[i]
-			conv = converters[i]
 			try:
-				cargs.append(conv(arg))
-			finally:
+				if i < len(converters) and converters[i]:
+					cargs.append(converters[i](arg))
+				else:
+					cargs.append(arg)
+			except:
 				args_correct = False
 				break
 
@@ -78,10 +87,28 @@ class YouTubeClient:
 			if 'error' in command:
 				print('Error in parsing command')
 				continue
-			self._execute(command)
+			ret = self._execute(command)
+			self.socket.send(json.dumps(ret))
 	
 	def _execute(self, command):
-		print(command)
+		method = command['method']
+		args = command['args']
+
+		if method == 'play' and len(args) == 1:
+			self.player.play(args[0])
+			return {}
+
+		if method == 'stop':
+			self.player.stop()
+			return {}
+
+		if method == 'pause':
+			self.player.pause()
+			return {}
+
+		if method == 'resume':
+			self.player.resume()
+			return {}
 
 class ParseException(Exception):
 	def __init__(self, method, args):
